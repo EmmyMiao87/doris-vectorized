@@ -34,10 +34,14 @@ using doris::TypeDescriptor;
 
 VExpr::VExpr(const doris::TExprNode& node)
         : _node_type(node.node_type),
-          _type(TypeDescriptor::from_thrift(node.type)),
-          _data_type(_type.get_data_type_ptr()) {
+          _type(TypeDescriptor::from_thrift(node.type)) {
     if (node.__isset.fn) {
         _fn = node.fn;
+    }
+    if (node.__isset.is_nullable) {
+        _data_type = IDataType::from_thrift(_type.type, node.is_nullable);
+    } else {
+        _data_type = IDataType::from_thrift(_type.type);
     }
 }
 

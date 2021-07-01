@@ -903,6 +903,7 @@ abstract public class Expr extends TreeNode<Expr> implements ParseNode, Cloneabl
             }
         }
         msg.output_scale = getOutputScale();
+        msg.setIsNullable(isNullable());
         toThrift(msg);
         container.addToNodes(msg);
         for (Expr child : children) {
