@@ -290,7 +290,7 @@ nonterminal List<StatementBase> stmts;
 nonterminal StatementBase stmt, show_stmt, show_param, help_stmt, load_stmt,
     create_routine_load_stmt, pause_routine_load_stmt, resume_routine_load_stmt, stop_routine_load_stmt,
     show_routine_load_stmt, show_routine_load_task_stmt, show_create_routine_load_stmt,
-    describe_stmt, alter_stmt,
+    describe_stmt, alter_stmt, alter_stats_stmt,
     use_stmt, kill_stmt, drop_stmt, recover_stmt, grant_stmt, revoke_stmt, create_stmt, set_stmt, sync_stmt, cancel_stmt, cancel_param, delete_stmt,
     link_stmt, migrate_stmt, enter_stmt, transaction_stmt, unsupported_stmt, export_stmt, admin_stmt, truncate_stmt,
     import_columns_stmt, import_delete_on_stmt, import_sequence_stmt, import_where_stmt, install_plugin_stmt, uninstall_plugin_stmt,
@@ -414,7 +414,8 @@ nonterminal SetVar option_value, option_value_follow_option_type, option_value_n
 nonterminal List<SetVar> option_value_list, option_value_list_continued, start_option_value_list,
         start_option_value_list_following_option_type, user_property_list;
 
-nonterminal Map<String, String> key_value_map, opt_key_value_map, opt_properties, opt_ext_properties, opt_enable_feature_properties;
+nonterminal Map<String, String> key_value_map, opt_key_value_map, opt_properties,
+            opt_ext_properties, opt_enable_feature_properties, properties;
 nonterminal ColumnDef column_definition;
 nonterminal IndexDef index_definition;
 nonterminal ArrayList<ColumnDef> column_definition_list;
@@ -813,6 +814,17 @@ alter_stmt ::=
     :}
     ;
 
+alter_stats_stmt ::=
+    KW_ALTER KW_TABLE table_name:tbl KW_SET KW_STATS LPAREN key_value_map:map RPAREN
+    {:
+        RESULT = new AlterTableStatsStmt(tbl, map);
+    :}
+    | KW_ALTER KW_TABLE table_name:tbl KW_MODIFY KW_COLUMN ident:columnName
+      KW_SET KW_STATS LPAREN key_value_map:map RPAREN
+    {:
+        RESULT = new AlterColumnStatsStmt(tbl, columnName, map);
+    :}
+
 opt_datasource_properties ::=
     // empty
     {:
@@ -1037,9 +1049,9 @@ opt_enable_feature_properties ::=
     {:
     RESULT = null;
     :}
-    | KW_WITH KW_PROPERTIES LPAREN key_value_map:map RPAREN
+    | KW_WITH properties:properties
     {:
-    RESULT = map;
+    RESULT = properties;
     :}
     ;
 
@@ -2157,9 +2169,9 @@ opt_properties ::=
     {:
     RESULT = null;
     :}
-    | KW_PROPERTIES LPAREN key_value_map:map RPAREN
+    | properties:properties
     {:
-    RESULT = map;
+    RESULT = properties;
     :}
     ;
 
@@ -2167,7 +2179,14 @@ opt_ext_properties ::=
     {:
     RESULT = null;
     :}
-    | KW_BROKER KW_PROPERTIES LPAREN key_value_map:map RPAREN
+    | KW_BROKER properties:properties
+    {:
+    RESULT = properties;
+    :}
+    ;
+
+properties ::=
+    KW_PROPERTIES LPAREN key_value_map:map RPAREN
     {:
     RESULT = map;
     :}
