@@ -373,6 +373,9 @@ struct THashJoinNode {
   // If true, this join node can (but may choose not to) generate slot filters
   // after constructing the build side that can be applied to the probe side.
   5: optional bool add_probe_filters
+
+  // if true, the hash table may not have chaining
+  6: optional bool try_without_chaining
 }
 
 struct TMergeJoinNode {

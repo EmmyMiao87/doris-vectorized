@@ -35,16 +35,19 @@ import org.apache.doris.thrift.THashJoinNode;
 import org.apache.doris.thrift.TPlanNode;
 import org.apache.doris.thrift.TPlanNodeType;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import org.glassfish.jersey.internal.guava.Sets;
 
 /**
  * Hash join between left child and right child.
@@ -65,6 +68,7 @@ public class HashJoinNode extends PlanNode {
     private boolean isColocate = false; //the flag for colocate join
     private String colocateReason = ""; // if can not do colocate join, set reason here
     private boolean isBucketShuffle = false; // the flag for bucket shuffle join
+    private boolean tryWithoutChaining = false; // the flag for no chaining of hash table
 
     public HashJoinNode(PlanNodeId id, PlanNode outer, PlanNode inner, TableRef innerRef,
                         List<Expr> eqJoinConjuncts, List<Expr> otherJoinConjuncts) {
@@ -155,6 +159,8 @@ public class HashJoinNode extends PlanNode {
                 .map(entity -> (BinaryPredicate) entity).collect(Collectors.toList());
         otherJoinConjuncts =
                 Expr.substituteList(otherJoinConjuncts, combinedChildSmap, analyzer, false);
+
+        tryWithoutChaining();
     }
 
     private void replaceOutputSmapForOuterJoin() {
@@ -178,6 +184,35 @@ public class HashJoinNode extends PlanNode {
                 }
             }
             outputSmap = new ExprSubstitutionMap(lhs, rhs);
+        }
+    }
+
+    /**
+     * In some specific cases, the hash table does not need the linked list value behind the bucket.
+     * The advantage of not storing the linked list is that
+     * when the Join node constructs a tuple,
+     * it is no longer necessary to access the following linked list pointers,
+     * thereby improving performance.
+     * This function is mainly to judge whether this optimization can be enabled.
+     * There are two prerequisites for enabling this optimization:
+     * 1. Except for the slots participating in the Join,
+     * the right table no longer contains other required columns.
+     * 2. Function transformation is not included in the Join expression.
+     */
+    private void tryWithoutChaining() {
+        Set<SlotRef> joinSlotSet = Sets.newHashSet();
+        for (BinaryPredicate eqJoinPredicate : eqJoinConjuncts) {
+            Expr rhsJoinExpr = eqJoinPredicate.getChild(1);
+            SlotRef rhsSlotRef = rhsJoinExpr.unwrapSlotRef();
+            // Condition2
+            if (rhsSlotRef == null) {
+                return;
+            }
+            joinSlotSet.add(rhsSlotRef);
+        }
+        // Condition1
+        if (joinSlotSet.size() == innerRef.getDesc().getMaterializedSlots().size()) {
+            tryWithoutChaining = true;
         }
     }
 
@@ -299,6 +334,7 @@ public class HashJoinNode extends PlanNode {
             msg.hash_join_node.addToOtherJoinConjuncts(e.treeToThrift());
         }
         msg.hash_join_node.setIsPushDown(isPushDown);
+        msg.hash_join_node.setTryWithoutChaining(tryWithoutChaining);
     }
 
     @Override
@@ -324,6 +360,7 @@ public class HashJoinNode extends PlanNode {
         if (!conjuncts.isEmpty()) {
             output.append(detailPrefix).append("other predicates: ").append(getExplainString(conjuncts)).append("\n");
         }
+        output.append("try without chaining: ").append(tryWithoutChaining).append("\n");
         return output.toString();
     }
 
